@@ -1,0 +1,31 @@
+# Core
+flask
+line-bot-sdk==3.13.0
+uwsgi
+python-dotenv
+
+# === Optional, 用到再打開 ===
+# openai
+
+# Google APIs
+# google-api-python-client
+# google-auth-httplib2
+# google-auth-oauthlib
+
+# Crawling / Parsing
+# beautifulsoup4
+# lxml
+
+# Geo
+# geopy
+
+# Data / Scientific (不必要就別裝)
+# pandas
+# numpy
+# matplotlib
+
+# Timezone (除非舊碼需要，否則用 zoneinfo)
+# pytz
+
+# Imgur
+# imgurpython
