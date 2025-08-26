@@ -45,7 +45,7 @@ jobs:                                               # 作業（可以有多個�
             --exclude ".git" \                      # 排除 .git 目錄
             --exclude ".github" \                   # 排除工作流程本身
             -e "ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=yes" \  # 指定使用的 SSH 連線參數
-            ./linebot/ "${GCE_USER}@${GCE_HOST}:${DEPLOY_PATH}/"      # 將本機 ./linebot/ 內容同步到遠端部署路徑
+            ./ "${GCE_USER}@${GCE_HOST}:${DEPLOY_PATH}/"      # 將本機 ./linebot/ 內容同步到遠端部署路徑
         # 若你的原始碼不在 linebot/，改成 ./ 或你實際的資料夾
 
       - name: Install dependencies on VM (venv)     # 步驟：在 GCE 使用 venv 安裝套件（可選）
