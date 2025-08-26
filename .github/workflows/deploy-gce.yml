@@ -1,77 +1,77 @@
-name: Deploy Line Bot to GCE (SSH + rsync)          # 工作流程名稱，方便在 Actions 介面辨識
+name: Deploy Line Bot to GCE (SSH + rsync)
 
-on:                                                 # 觸發條件區塊
-  push:                                             # 當有 push 事件時觸發
-    branches: [ main ]                              # 只在 main 分支觸發（可改成你要部署的分支）
-    paths:                                          # 僅當這些路徑有變動時才觸發（避免不相干檔案觸發部署）
-      - "linebot/**"                                # 監聽 linebot/ 內所有檔案（依你的專案調整）
-      - ".github/workflows/deploy-gce.yml"          # 若你修改工作流程本身，也會觸發
-  workflow_dispatch:                                # 手動觸發選項（在 GitHub 頁面手動 Run）
-    inputs:                                         # 手動觸發時可輸入參數
-      do_pip_install:                               # 是否在 GCE 上重新 pip 安裝相依套件
-        description: "部署後在 VM 上執行 pip install -r requirements.txt"  # 參數說明
-        required: false                             # 非必填
-        type: boolean                               # 布林值
-        default: false                              # 預設不安裝，加速一般部署
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - "**/*.py"
+      - "requirements.txt"
+      - "uwsgi.ini"
+      - "wsgi.py"
+      - ".github/workflows/deploy-gce.yml"
+  workflow_dispatch:
+    inputs:
+      do_pip_install:
+        description: "部署後在 VM 上執行 pip install -r requirements.txt（使用 venv）"
+        required: false
+        type: boolean
+        default: false
 
-concurrency:                                        # 併發控制（避免同時跑多個部署）
-  group: deploy-linebot                             # 群組名稱（同一群組同時間只會有一個在跑）
-  cancel-in-progress: false                         # 不取消正在執行的工作（保守做法）
-
-jobs:                                               # 作業（可以有多個），這裡只需要一個 deploy
+jobs:
   deploy:
-    runs-on: ubuntu-latest                          # 使用 GitHub 提供的 Ubuntu runner
+    runs-on: ubuntu-latest
+    env:
+      GCE_HOST: ${{ secrets.GCE_HOST }}
+      GCE_USER: ${{ secrets.GCE_USER }}
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+      SERVICE_NAME: ${{ secrets.SERVICE_NAME }}
 
-    env:                                            # 設定環境變數，步驟內都可用
-      GCE_HOST: ${{ secrets.GCE_HOST }}             # 你的 GCE 公網 IP（從 Secrets 取）
-      GCE_USER: ${{ secrets.GCE_USER }}             # SSH 使用者（例如 ubuntu）
-      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}       # GCE 端部署目錄（例如 /opt/linebot/app）
-      SERVICE_NAME: ${{ secrets.SERVICE_NAME }}     # systemd 服務名稱（例如 linebot）
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
-    steps:                                          # 一連串步驟
-      - name: Checkout repo                         # 步驟：檢出程式碼
-        uses: actions/checkout@v4                   # 官方 action，將此分支程式碼取回 runner
-
-      - name: Prepare SSH                           # 步驟：準備 SSH 金鑰與 known_hosts
-        run: |                                      # 在 runner 上執行下方 shell 指令
-          install -m 700 -d ~/.ssh                  # 建立 ~/.ssh 資料夾並設權限 700
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa   # 寫入私鑰（從 Secrets 取）
-          chmod 600 ~/.ssh/id_rsa                   # 私鑰權限 600（避免 SSH 拒絕）
-          ssh-keyscan -H "$GCE_HOST" >> ~/.ssh/known_hosts        # 把 GCE 的 host key 加入 known_hosts，避免互動確認
-
-      - name: Rsync code to GCE                     # 步驟：用 rsync 同步檔案到 GCE
+      - name: Prepare SSH
         run: |
-          rsync -avz --delete \                     # -a 保留屬性；-v 詳細輸出；-z 壓縮；--delete 移除遠端多餘檔（保持一致）
-            --exclude ".git" \                      # 排除 .git 目錄
-            --exclude ".github" \                   # 排除工作流程本身
-            -e "ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=yes" \  # 指定使用的 SSH 連線參數
-            ./ "${GCE_USER}@${GCE_HOST}:${DEPLOY_PATH}/"      # 將本機 ./linebot/ 內容同步到遠端部署路徑
-        # 若你的原始碼不在 linebot/，改成 ./ 或你實際的資料夾
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "$GCE_HOST" >> ~/.ssh/known_hosts
 
-      - name: Install dependencies on VM (venv)     # 步驟：在 GCE 使用 venv 安裝套件（可選）
-        if: ${{ inputs.do_pip_install }}            # 僅當手動觸發時勾選 true 才會執行（或你可改成固定執行）
+      # 先在遠端建立部署目錄，避免 rsync 初次失敗
+      - name: Ensure remote deploy path exists
         run: |
-          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=yes "${GCE_USER}@${GCE_HOST}" << EOF  # 透過 SSH 執行多行指令（heredoc）
-          set -e                                      # 任一指令失敗就退出，確保流程嚴謹
-          mkdir -p "${DEPLOY_PATH}"                   # 確保部署目錄存在
-          cd "${DEPLOY_PATH}"                         # 切換到部署目錄
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=yes "${GCE_USER}@${GCE_HOST}" "mkdir -p '${DEPLOY_PATH}'"
 
-          if [ ! -d "venv" ]; then                    # 若 venv 不存在就建立
-            python3 -m venv venv                      # 用系統 Python 建立 venv
+      - name: Rsync code to GCE (from repo root)
+        run: |
+          rsync -avz --delete \
+            --exclude ".git" \
+            --exclude ".github" \
+            --exclude ".gitignore" \
+            -e "ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=yes" \
+            ./ "${GCE_USER}@${GCE_HOST}:${DEPLOY_PATH}/"
+
+      - name: Install dependencies on VM (venv)
+        if: ${{ inputs.do_pip_install }}
+        run: |
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=yes "${GCE_USER}@${GCE_HOST}" << EOF
+          set -e
+          cd "${DEPLOY_PATH}"
+          if [ ! -d venv ]; then
+            python3 -m venv venv
           fi
-          . venv/bin/activate                         # 啟用 venv（進入虛擬環境）
-
-          pip install --upgrade pip wheel             # 先更新 pip 與 wheel（常見最佳實務）
-          if [ -f requirements.txt ]; then            # 若存在 requirements.txt 就安裝
+          . venv/bin/activate
+          pip install --upgrade pip wheel
+          if [ -f requirements.txt ]; then
             pip install -r requirements.txt
           fi
           EOF
 
-      - name: Restart service on VM                 # 步驟：重啟遠端的 systemd 服務
+      - name: Restart service on VM
         run: |
           ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=yes "${GCE_USER}@${GCE_HOST}" << EOF
-          set -e                                      # 任何錯誤都讓步驟失敗（便於偵錯）
-          sudo systemctl restart "${SERVICE_NAME}"    # 重啟服務（需要 NOPASSWD 或服務允許）
-          sleep 1                                     # 稍等片刻，讓服務起來
-          sudo systemctl is-active "${SERVICE_NAME}"  # 檢查服務狀態為 active（否則整個 job 失敗）
+          set -e
+          sudo systemctl restart "${SERVICE_NAME}"
+          sleep 1
+          sudo systemctl is-active "${SERVICE_NAME}"
           EOF
