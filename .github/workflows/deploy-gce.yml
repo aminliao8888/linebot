@@ -42,10 +42,21 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H "$GCE_HOST" >> ~/.ssh/known_hosts
 
+      - name: Show CI public key (for GCE metadata)
+        run: |
+          ssh-keygen -y -f ~/.ssh/id_ed25519
+    
       - name: Smoke test SSH
         run: |
+          SSH="ssh -tt \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o IdentityAgent=none \
+            -o IdentityFile=~/.ssh/id_ed25519 \
+            -o PreferredAuthentications=publickey \
+            -o PubkeyAuthentication=yes \
+            -o StrictHostKeyChecking=yes"
           set -x
-          echo "Smoke test SSH : ${GCE_USER}@${GCE_HOST}"
           ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
             "${GCE_USER}@${GCE_HOST}" "whoami && echo \$HOME"
 
