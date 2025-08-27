@@ -30,6 +30,13 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      - name: Verify key fingerprint (from Secrets)
+        run: |
+          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > /tmp/privkey
+          chmod 600 /tmp/privkey
+          # 由私鑰導出公鑰，再計算指紋（不會洩漏金鑰本體）
+          ssh-keygen -y -f /tmp/privkey | ssh-keygen -lf -
+
       - name: Prepare SSH
         run: |
           install -m 700 -d ~/.ssh
@@ -37,6 +44,16 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H "$GCE_HOST" >> ~/.ssh/known_hosts
 
+      - name: Smoke test SSH
+        run: |
+          set -x
+          ssh -vvv -o IdentitiesOnly=yes -i ~/.ssh/id_rsa -o StrictHostKeyChecking=yes "${GCE_USER}@${GCE_HOST}" "whoami && echo \$HOME"
+          # 成功才會往下跑
+    
+      - name: Ensure remote deploy path exists
+        run: |
+          ssh -o IdentitiesOnly=yes -i ~/.ssh/id_rsa -o StrictHostKeyChecking=yes "${GCE_USER}@${GCE_HOST}" "mkdir -p '${DEPLOY_PATH}'"
+    
       # 先在遠端建立部署目錄，避免 rsync 初次失敗
       - name: Ensure remote deploy path exists
         run: |
