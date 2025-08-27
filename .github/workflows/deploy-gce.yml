@@ -110,9 +110,37 @@ jobs:
           fi
           EOF
 
-      - name: Restart service on VM
+      - name: Restart service on VM (wait until active + logs if fail)
+        shell: bash
         run: |
-          SSH="ssh -tt -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes"
-          # 單行執行，避免 heredoc；同時用引號確保 SERVICE_NAME 在 runner 端展開為字串
-          echo "${GCE_USER}@${GCE_HOST}", "${SERVICE_NAME}"
-          $SSH "${GCE_USER}@${GCE_HOST}" "set -e; sudo systemctl restart '${SERVICE_NAME}'; sleep 1; sudo systemctl is-active '${SERVICE_NAME}'"
+          set -euo pipefail
+          U=$(printf '%s' "${GCE_USER}" | tr -d '\r\n' | xargs)
+          H=$(printf '%s' "${GCE_HOST}" | tr -d '\r\n' | xargs)
+      
+          ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
+              -l "$U" -- "$H" "
+            set -euo pipefail
+            sudo systemctl daemon-reload || true
+            sudo systemctl restart '${SERVICE_NAME}'
+      
+            # 等待到 active / failed，最長 60 秒
+            for i in {1..60}; do
+              state=\$(systemctl is-active '${SERVICE_NAME}' || true)
+              echo \"state=\$state\"
+              if [ \"\$state\" = 'active' ]; then
+                systemctl --no-pager -l status '${SERVICE_NAME}' || true
+                exit 0
+              fi
+              if [ \"\$state\" = 'failed' ]; then
+                systemctl --no-pager -l status '${SERVICE_NAME}' || true
+                journalctl -u '${SERVICE_NAME}' -n 200 --no-pager || true
+                exit 1
+              fi
+              sleep 1
+            done
+      
+            echo 'Timed out waiting for service to become active'
+            systemctl --no-pager -l status '${SERVICE_NAME}' || true
+            journalctl -u '${SERVICE_NAME}' -n 200 --no-pager || true
+            exit 1
+          "
