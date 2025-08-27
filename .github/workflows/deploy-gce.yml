@@ -1,8 +1,8 @@
-name: Deploy Line Bot to GCE (clean & robust)
+name: Deploy Line Bot to GCE (clean)
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main ]                  # 需要時可改
     paths:
       - "**/*.py"
       - "requirements.txt"
@@ -35,44 +35,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Prepare SSH (ed25519; normalize line endings)
+      - name: Prepare SSH (ed25519)
         run: |
-          set -e
           install -m 700 -d ~/.ssh
           printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
-          # 防止 Windows/瀏覽器貼上造成 CRLF
-          sed -i 's/\r$//' ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H "$GCE_HOST" >> ~/.ssh/known_hosts
-
-      # 可保留這步，之後任何金鑰問題一眼看出（不會顯示私鑰內容）
-      - name: Verify key fingerprint (from Secrets)
-        run: |
-          set -e
-          ssh-keygen -y -f ~/.ssh/id_ed25519 > /tmp/derived.pub
-          echo "Derived pubkey fingerprint (should match VM authorized_keys):"
-          ssh-keygen -lf /tmp/derived.pub
 
       - name: Smoke test SSH
         run: |
           set -x
           ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
             "${GCE_USER}@${GCE_HOST}" "whoami && echo \$HOME"
-
-      - name: Ensure rsync is installed on VM
-        run: |
-          ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
-            "${GCE_USER}@${GCE_HOST}" 'set -e
-            if ! command -v rsync >/dev/null 2>&1; then
-              if [ -f /etc/debian_version ] || grep -qi ubuntu /etc/os-release 2>/dev/null; then
-                sudo apt-get update -y && sudo apt-get install -y rsync
-              elif [ -f /etc/redhat-release ]; then
-                (sudo yum install -y rsync || sudo dnf install -y rsync)
-              else
-                echo "Please install rsync manually on the VM." >&2
-                exit 1
-              fi
-            fi'
 
       - name: Ensure remote deploy path exists
         run: |
@@ -92,7 +66,7 @@ jobs:
         if: ${{ inputs.do_pip_install }}
         run: |
           ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
-            "${GCE_USER}@${GCE_HOST}" << 'EOF'
+            "${GCE_USER}@${GCE_HOST}" << EOF
           set -e
           cd "${DEPLOY_PATH}"
           if [ ! -d venv ]; then
@@ -105,9 +79,12 @@ jobs:
           fi
           EOF
 
-      - name: Restart service on VM (force TTY)
+      - name: Restart service on VM
         run: |
-          # -tt：強制分配 TTY，避免某些 sudo/TTY 限制
-          ssh -tt -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
-            "${GCE_USER}@${GCE_HOST}" \
-            "set -e; sudo systemctl restart '${SERVICE_NAME}'; sleep 1; sudo systemctl is-active '${SERVICE_NAME}' && echo OK"
+          ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
+            "${GCE_USER}@${GCE_HOST}" << EOF
+          set -e
+          sudo systemctl restart "${SERVICE_NAME}"
+          sleep 1
+          sudo systemctl is-active "${SERVICE_NAME}"
+          EOF
