@@ -1,8 +1,8 @@
-name: Deploy Line Bot to GCE (SSH + rsync)
+name: Deploy Line Bot to GCE (clean)
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main ]                  # 需要時可改
     paths:
       - "**/*.py"
       - "requirements.txt"
@@ -12,66 +12,61 @@ on:
   workflow_dispatch:
     inputs:
       do_pip_install:
-        description: "部署後在 VM 上執行 pip install -r requirements.txt（使用 venv）"
-        required: false
+        description: "部署後在 GCE 的 venv 內執行 pip install -r requirements.txt"
         type: boolean
+        required: false
         default: false
+
+concurrency:
+  group: deploy-linebot
+  cancel-in-progress: false
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     env:
-      GCE_HOST: ${{ secrets.GCE_HOST }}
-      GCE_USER: ${{ secrets.GCE_USER }}
-      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
-      SERVICE_NAME: ${{ secrets.SERVICE_NAME }}
+      GCE_HOST: ${{ secrets.GCE_HOST }}         # 例：35.xx.xx.xx
+      GCE_USER: ${{ secrets.GCE_USER }}         # 例：Amin（大小寫要一致）
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}   # 例：/home/Amin/
+      SERVICE_NAME: ${{ secrets.SERVICE_NAME }} # 例：linebot
 
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Verify key fingerprint (from Secrets)
-        run: |
-          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > /tmp/privkey
-          chmod 600 /tmp/privkey
-          # 由私鑰導出公鑰，再計算指紋（不會洩漏金鑰本體）
-          ssh-keygen -y -f /tmp/privkey | ssh-keygen -lf -
-
-      - name: Prepare SSH
+      - name: Prepare SSH (ed25519)
         run: |
           install -m 700 -d ~/.ssh
-          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
+          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H "$GCE_HOST" >> ~/.ssh/known_hosts
 
       - name: Smoke test SSH
         run: |
           set -x
-          ssh -vvv -o IdentitiesOnly=yes -i ~/.ssh/id_rsa -o StrictHostKeyChecking=yes "${GCE_USER}@${GCE_HOST}" "whoami && echo \$HOME"
-          # 成功才會往下跑
-    
-      - name: Ensure remote deploy path exists
-        run: |
-          ssh -o IdentitiesOnly=yes -i ~/.ssh/id_rsa -o StrictHostKeyChecking=yes "${GCE_USER}@${GCE_HOST}" "mkdir -p '${DEPLOY_PATH}'"
-    
-      # 先在遠端建立部署目錄，避免 rsync 初次失敗
-      - name: Ensure remote deploy path exists
-        run: |
-          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=yes "${GCE_USER}@${GCE_HOST}" "mkdir -p '${DEPLOY_PATH}'"
+          ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
+            "${GCE_USER}@${GCE_HOST}" "whoami && echo \$HOME"
 
-      - name: Rsync code to GCE (from repo root)
+      - name: Ensure remote deploy path exists
+        run: |
+          ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
+            "${GCE_USER}@${GCE_HOST}" "mkdir -p '${DEPLOY_PATH}'"
+
+      - name: Rsync code to GCE (repo root → DEPLOY_PATH)
         run: |
           rsync -avz --delete \
             --exclude ".git" \
             --exclude ".github" \
             --exclude ".gitignore" \
-            -e "ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=yes" \
+            -e "ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes" \
             ./ "${GCE_USER}@${GCE_HOST}:${DEPLOY_PATH}/"
 
-      - name: Install dependencies on VM (venv)
+      - name: Install dependencies on VM (venv, optional)
         if: ${{ inputs.do_pip_install }}
         run: |
-          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=yes "${GCE_USER}@${GCE_HOST}" << EOF
+          ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
+            "${GCE_USER}@${GCE_HOST}" << EOF
           set -e
           cd "${DEPLOY_PATH}"
           if [ ! -d venv ]; then
@@ -86,7 +81,8 @@ jobs:
 
       - name: Restart service on VM
         run: |
-          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=yes "${GCE_USER}@${GCE_HOST}" << EOF
+          ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
+            "${GCE_USER}@${GCE_HOST}" << EOF
           set -e
           sudo systemctl restart "${SERVICE_NAME}"
           sleep 1
