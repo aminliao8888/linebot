@@ -81,10 +81,6 @@ jobs:
 
       - name: Restart service on VM
         run: |
-          ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
-            "${GCE_USER}@${GCE_HOST}" << EOF
-          set -e
-          sudo systemctl restart "${SERVICE_NAME}"
-          sleep 1
-          sudo systemctl is-active "${SERVICE_NAME}"
-          EOF
+          SSH="ssh -tt -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes"
+          # 單行執行，避免 heredoc；同時用引號確保 SERVICE_NAME 在 runner 端展開為字串
+          $SSH "${GCE_USER}@${GCE_HOST}" "set -e; sudo systemctl restart '${SERVICE_NAME}'; sleep 1; sudo systemctl is-active '${SERVICE_NAME}'"
