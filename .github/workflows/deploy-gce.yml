@@ -51,17 +51,19 @@ jobs:
           set -x
           ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes "${GCE_USER}@${GCE_HOST}"
 
-      #- name: Ensure remote deploy path exists
-      #  run: |
-      #    ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
-      #      "${GCE_USER}@${GCE_HOST}" "mkdir -p '${DEPLOY_PATH}'"
+      - name: Ensure remote deploy path exists
+        run: |
+          ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
+            "${GCE_USER}@${GCE_HOST}" "mkdir -p '${DEPLOY_PATH}'"
 
       - name: Rsync code to GCE (repo root → DEPLOY_PATH)
         run: |
           rsync -avz --delete \
-            --exclude ".git" \
-            --exclude ".github" \
-            --exclude ".gitignore" \
+            --exclude '/.ssh/' \
+            --exclude '/.bash_history' \
+            --exclude '/.cache/' \
+            --exclude '/venv/' \
+            --exclude '.git/' --exclude '.github/' --exclude '.gitignore' \
             -e "ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes" ./ "${GCE_USER}@${GCE_HOST}:${DEPLOY_PATH}/"
 
       - name: Install dependencies on VM (venv, optional)
