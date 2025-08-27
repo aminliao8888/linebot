@@ -56,15 +56,43 @@ jobs:
           ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
             "${GCE_USER}@${GCE_HOST}" "mkdir -p '${DEPLOY_PATH}'"
 
-      - name: Rsync code to GCE (repo root → DEPLOY_PATH)
+      - name: Prepare remote deploy path (mkdir/chown/chmod)
+        shell: bash
         run: |
-          rsync -avz --delete \
+          set -euo pipefail
+          # 清掉可能的 CR/LF
+          GCE_USER_CLEAN=$(printf '%s' "${GCE_USER}" | tr -d '\r\n' | xargs)
+          GCE_HOST_CLEAN=$(printf '%s' "${GCE_HOST}" | tr -d '\r\n' | xargs)
+      
+          # 首次連線先把 host key 加入 known_hosts，避免 StrictHostKeyChecking 卡住
+          install -m 700 -d ~/.ssh
+          ssh-keyscan -T 5 "$GCE_HOST_CLEAN" >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts || true
+          chmod 600 ~/.ssh/id_ed25519 || true
+      
+          ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
+            -l "$GCE_USER_CLEAN" -- "$GCE_HOST_CLEAN" \
+            "set -euo pipefail; \
+             sudo mkdir -p '${DEPLOY_PATH}' && \
+             sudo chown -R \$USER:\$USER '${DEPLOY_PATH}' && \
+             sudo chmod -R u+rwX '${DEPLOY_PATH}'"
+
+      - name: Rsync code to GCE (repo root → DEPLOY_PATH)
+        shell: bash
+        run: |
+          set -euo pipefail
+          GCE_USER_CLEAN=$(printf '%s' "${GCE_USER}" | tr -d '\r\n' | xargs)
+          GCE_HOST_CLEAN=$(printf '%s' "${GCE_HOST}" | tr -d '\r\n' | xargs)
+      
+          rsync -vrtz --delete \
             --exclude '/.ssh/' \
             --exclude '/.bash_history' \
             --exclude '/.cache/' \
             --exclude '/venv/' \
             --exclude '.git/' --exclude '.github/' --exclude '.gitignore' \
-            -e "ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes" ./ "${GCE_USER}@${GCE_HOST}:${DEPLOY_PATH}/"
+            --no-owner --no-group --omit-dir-times --no-perms \
+            -e "ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes" \
+            ./ "${GCE_USER_CLEAN}@${GCE_HOST_CLEAN}:${DEPLOY_PATH}/"
 
       - name: Install dependencies on VM (venv, optional)
         if: ${{ inputs.do_pip_install }}
