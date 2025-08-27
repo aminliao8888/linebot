@@ -45,6 +45,7 @@ jobs:
       - name: Smoke test SSH
         run: |
           set -x
+          echo "Smoke test SSH : ${GCE_USER}@${GCE_HOST}"
           ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
             "${GCE_USER}@${GCE_HOST}" "whoami && echo \$HOME"
 
