@@ -83,4 +83,5 @@ jobs:
         run: |
           SSH="ssh -tt -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes"
           # 單行執行，避免 heredoc；同時用引號確保 SERVICE_NAME 在 runner 端展開為字串
+          echo "${GCE_USER}@${GCE_HOST}", "${SERVICE_NAME}"
           $SSH "${GCE_USER}@${GCE_HOST}" "set -e; sudo systemctl restart '${SERVICE_NAME}'; sleep 1; sudo systemctl is-active '${SERVICE_NAME}'"
