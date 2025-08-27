@@ -49,7 +49,7 @@ jobs:
       - name: Smoke test SSH
         run: |
           set -x
-          ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes "${GCE_USER}@${GCE_HOST}" "whoami && echo \$HOME"
+          ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes "${GCE_USER}@${GCE_HOST}"
 
       #- name: Ensure remote deploy path exists
       #  run: |
