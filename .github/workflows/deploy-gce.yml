@@ -49,8 +49,7 @@ jobs:
       - name: Smoke test SSH
         run: |
           set -x
-          ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
-            "${GCE_USER}@${GCE_HOST}" "whoami && echo \$HOME"
+          ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes "${GCE_USER}@${GCE_HOST}" "whoami && echo \$HOME"
 
       #- name: Ensure remote deploy path exists
       #  run: |
@@ -63,14 +62,12 @@ jobs:
             --exclude ".git" \
             --exclude ".github" \
             --exclude ".gitignore" \
-            -e "ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes" \
-            ./ "${GCE_USER}@${GCE_HOST}:${DEPLOY_PATH}/"
+            -e "ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes" ./ "${GCE_USER}@${GCE_HOST}:${DEPLOY_PATH}/"
 
       - name: Install dependencies on VM (venv, optional)
         if: ${{ inputs.do_pip_install }}
         run: |
-          ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
-            "${GCE_USER}@${GCE_HOST}" << EOF
+          ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes "${GCE_USER}@${GCE_HOST}" << EOF
           set -e
           cd "${DEPLOY_PATH}"
           if [ ! -d venv ]; then
