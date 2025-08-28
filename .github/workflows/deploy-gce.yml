@@ -28,9 +28,9 @@ jobs:
     env:
       GCE_HOST: ${{ secrets.GCE_HOST }}         # 例：35.xx.xx.xx
       GCE_USER: ${{ secrets.GCE_USER }}         # 例：Amin（大小寫要一致）
-      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}linebot                # 例：/home/Amin/linebot/
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}               # 例：/home/Amin/linebot/
       SERVICE_NAME: ${{ secrets.SERVICE_NAME }} # 例：linebot
-      DEPLOY_ENV_PATH: ${{ secrets.DEPLOY_PATH }}env
+      DEPLOY_ENV_PATH: ${{ secrets.DEPLOY_PATH }}
       CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
       CHANNEL_SECRET: ${{ secrets.LINE_CHANNEL_SECRET }}
       
@@ -57,7 +57,7 @@ jobs:
       - name: Ensure remote deploy path exists
         run: |
           ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
-            "${GCE_USER}@${GCE_HOST}" "mkdir -p '${DEPLOY_PATH}'"
+            "${GCE_USER}@${GCE_HOST}" "mkdir -p '${DEPLOY_PATH}linebot'"
 
       - name: Push LINE .env to VM via stdin
         shell: bash
@@ -73,8 +73,8 @@ jobs:
           ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
             -l "$U" -- "$H" '
               set -euo pipefail
-              install -d -m 700 "${DEPLOY_ENV_PATH}"
-              install -m 600 /dev/stdin "${DEPLOY_ENV_PATH}/.env"
+              install -d -m 700 "${DEPLOY_PATH}/env"
+              install -m 600 /dev/stdin "${DEPLOY_PATH}/env/.env"
             ' < .env
       
           rm -f .env
@@ -96,9 +96,9 @@ jobs:
           ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
             -l "$GCE_USER_CLEAN" -- "$GCE_HOST_CLEAN" \
             "set -euo pipefail; \
-             sudo mkdir -p '${DEPLOY_PATH}' && \
-             sudo chown -R \$USER:\$USER '${DEPLOY_PATH}' && \
-             sudo chmod -R u+rwX '${DEPLOY_PATH}'"
+             sudo mkdir -p '${DEPLOY_PATH}linebot' && \
+             sudo chown -R \$USER:\$USER '${DEPLOY_PATH}linebot' && \
+             sudo chmod -R u+rwX '${DEPLOY_PATH}linebot'"
 
       - name: Rsync code to GCE (repo root → DEPLOY_PATH)
         shell: bash
@@ -111,14 +111,14 @@ jobs:
             --exclude '.git/' --exclude '.github/' --exclude '.gitignore' \
             --no-owner --no-group --omit-dir-times --no-perms \
             -e "ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes" \
-            ./ "${GCE_USER_CLEAN}@${GCE_HOST_CLEAN}:${DEPLOY_PATH}/"
+            ./ "${GCE_USER_CLEAN}@${GCE_HOST_CLEAN}:${DEPLOY_PATH}/linebot/"
 
       - name: Install dependencies on VM (venv, optional)
         if: ${{ inputs.do_pip_install }}
         run: |
           ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes "${GCE_USER}@${GCE_HOST}" << EOF
           set -e
-          cd "${DEPLOY_PATH}"
+          cd "${DEPLOY_PATH}linebot"
           if [ ! -d venv ]; then
             python3 -m venv venv
           fi
