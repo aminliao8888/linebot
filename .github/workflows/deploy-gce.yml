@@ -79,6 +79,44 @@ jobs:
       
           rm -f .env
 
+      - name: Verify .env on VM and show $HOME
+        shell: bash
+        run: |
+          set -euo pipefail
+          U=$(printf '%s' "${GCE_USER}" | tr -d '\r\n' | xargs)
+          H=$(printf '%s' "${GCE_HOST}" | tr -d '\r\n' | xargs)
+      
+          # 透過 heredoc 把腳本丟到遠端執行（避免本機展開問題）
+          ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
+            -l "$U" -- "$H" "bash -s" <<'REMOTE'
+          set -euo pipefail
+      
+          echo "REMOTE HOME=$HOME"
+      
+          FILE="$HOME/env/.env"
+          if [ ! -f "$FILE" ]; then
+            echo "ERROR: $FILE 不存在"; exit 1
+          fi
+      
+          # 顯示基本屬性（不含內容）
+          if command -v stat >/dev/null 2>&1; then
+            stat -c "path=%n mode=%a owner=%U group=%G size=%s" "$FILE" || true
+          else
+            ls -l "$FILE" || true
+          fi
+      
+          # 驗證必備鍵是否存在；只印出鍵名與長度，避免洩漏
+          awk -F= '
+            $1=="CHANNEL_ACCESS_TOKEN"{printf "CHANNEL_ACCESS_TOKEN length=%d\n", length($2); found++}
+            $1=="CHANNEL_SECRET"{printf "CHANNEL_SECRET length=%d\n", length($2); found++}
+            END{ if(found<2){ exit 2 } }
+          ' "$FILE"
+      
+          # 額外給一個檔案指紋（不含內容），方便日後比對一致性
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "$FILE" | awk "{print \"sha256=\"\$1}"
+          fi
+          REMOTE
 
       - name: Prepare remote deploy path (mkdir/chown/chmod)
         shell: bash
