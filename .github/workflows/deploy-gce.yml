@@ -28,9 +28,12 @@ jobs:
     env:
       GCE_HOST: ${{ secrets.GCE_HOST }}         # 例：35.xx.xx.xx
       GCE_USER: ${{ secrets.GCE_USER }}         # 例：Amin（大小寫要一致）
-      DEPLOY_PATH: $HOME/linebot                # 例：/home/Amin/linebot/
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}linebot                # 例：/home/Amin/linebot/
       SERVICE_NAME: ${{ secrets.SERVICE_NAME }} # 例：linebot
-
+      DEPLOY_ENV_PATH: ${{ secrets.DEPLOY_PATH }}env
+      CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+      CHANNEL_SECRET: ${{ secrets.LINE_CHANNEL_SECRET }}
+      
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -58,9 +61,6 @@ jobs:
 
       - name: Push LINE .env to VM via stdin
         shell: bash
-        env:
-          CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
-          CHANNEL_SECRET: ${{ secrets.LINE_CHANNEL_SECRET }}
         run: |
           set -euo pipefail
           umask 077
@@ -73,62 +73,12 @@ jobs:
           ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
             -l "$U" -- "$H" '
               set -euo pipefail
-              install -d -m 700 "$HOME/env"
-              install -m 600 /dev/stdin "$HOME/env/.env"
+              install -d -m 700 "${DEPLOY_ENV_PATH}"
+              install -m 600 /dev/stdin "${DEPLOY_ENV_PATH}/.env"
             ' < .env
       
           rm -f .env
-
-      - name: Show remote $HOME (unmasked) & verify .env
-        shell: bash
-        run: |
-          set -euo pipefail
-          U=$(printf '%s' "${GCE_USER}" | tr -d '\r\n' | xargs)
-          H=$(printf '%s' "${GCE_HOST}" | tr -d '\r\n' | xargs)
-      
-          ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
-            -l "$U" -- "$H" 'bash -s' <<'REMOTE'
-          set -euo pipefail
-      
-          # 1) 顯示遠端使用者與 $HOME（逐字元，避免被遮罩）
-          echo -n "REMOTE USER (char-by-char): "
-          id -un | sed "s/./& /g"; echo
-      
-          echo -n "REMOTE HOME (char-by-char): "
-          printf "%s" "$HOME" | sed "s/./& /g"; echo
-      
-          # 加碼：十六進位（可自行還原）
-          python3 - <<PY
-            import os, binascii
-            p=os.path.expanduser("~")
-            print("REMOTE HOME (hex):", binascii.hexlify(p.encode()).decode())
-            PY
-      
-          # 2) 驗證 $HOME/env/.env 是否存在與權限
-          FILE="$HOME/env/.env"
-          if [ ! -f "$FILE" ]; then
-            echo "ERROR: $FILE 不存在"; exit 1
-          fi
-          if command -v stat >/dev/null 2>&1; then
-            stat -c "path=%n mode=%a owner=%U group=%G size=%s" "$FILE"
-          else
-            ls -l "$FILE"
-          fi
-      
-          # 3) 檢查必備鍵是否在檔中（不輸出值）
-          awk -F= '
-            $1=="CHANNEL_ACCESS_TOKEN"{print "has CHANNEL_ACCESS_TOKEN"}
-            $1=="CHANNEL_SECRET"{print "has CHANNEL_SECRET"}
-            END{ if(NR==0){ exit 2 } }
-          ' "$FILE"
-      
-          # 4) 印出檔案指紋（不洩漏內容）
-          if command -v sha256sum >/dev/null 2>&1; then
-            sha256sum "$FILE" | awk "{print \"sha256=\"\$1}"
-          fi
-          REMOTE
-
-
+    
       - name: Prepare remote deploy path (mkdir/chown/chmod)
         shell: bash
         run: |
