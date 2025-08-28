@@ -28,7 +28,7 @@ jobs:
     env:
       GCE_HOST: ${{ secrets.GCE_HOST }}         # 例：35.xx.xx.xx
       GCE_USER: ${{ secrets.GCE_USER }}         # 例：Amin（大小寫要一致）
-      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}   # 例：/home/Amin/
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}   # 例：/home/Amin/linebot/
       SERVICE_NAME: ${{ secrets.SERVICE_NAME }} # 例：linebot
 
     steps:
@@ -85,10 +85,6 @@ jobs:
           GCE_HOST_CLEAN=$(printf '%s' "${GCE_HOST}" | tr -d '\r\n' | xargs)
       
           rsync -vrtz --delete \
-            --exclude '/.ssh/' \
-            --exclude '/.bash_history' \
-            --exclude '/.cache/' \
-            --exclude '/venv/' \
             --exclude '.git/' --exclude '.github/' --exclude '.gitignore' \
             --no-owner --no-group --omit-dir-times --no-perms \
             -e "ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes" \
@@ -123,8 +119,8 @@ jobs:
             sudo systemctl daemon-reload || true
             sudo systemctl restart '${SERVICE_NAME}'
       
-            # 等待到 active / failed，最長 60 秒
-            for i in {1..60}; do
+            # 等待到 active / failed，最長 300 秒
+            for i in {1..300}; do
               state=\$(systemctl is-active '${SERVICE_NAME}' || true)
               echo \"state=\$state\"
               if [ \"\$state\" = 'active' ]; then
@@ -143,4 +139,4 @@ jobs:
             systemctl --no-pager -l status '${SERVICE_NAME}' || true
             journalctl -u '${SERVICE_NAME}' -n 200 --no-pager || true
             exit 1
-          "
+
