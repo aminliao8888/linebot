@@ -28,7 +28,7 @@ jobs:
     env:
       GCE_HOST: ${{ secrets.GCE_HOST }}         # 例：35.xx.xx.xx
       GCE_USER: ${{ secrets.GCE_USER }}         # 例：Amin（大小寫要一致）
-      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}   # 例：/home/Amin/linebot/
+      DEPLOY_PATH: $HOME/linebot                # 例：/home/Amin/linebot/
       SERVICE_NAME: ${{ secrets.SERVICE_NAME }} # 例：linebot
 
     steps:
