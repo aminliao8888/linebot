@@ -56,36 +56,29 @@ jobs:
           ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
             "${GCE_USER}@${GCE_HOST}" "mkdir -p '${DEPLOY_PATH}'"
 
-      - name: Push LINE .env to VM ($HOME/env)
+      - name: Push LINE .env to VM via stdin
         shell: bash
         env:
-          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
-          LINE_CHANNEL_SECRET: ${{ secrets.LINE_CHANNEL_SECRET }}
+          CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          CHANNEL_SECRET: ${{ secrets.LINE_CHANNEL_SECRET }}
         run: |
           set -euo pipefail
-          # 以 600 權限建立本機 .env（umask 077 可確保 600）
           umask 077
           printf 'CHANNEL_ACCESS_TOKEN=%s\nCHANNEL_SECRET=%s\n' \
-            "$LINE_CHANNEL_ACCESS_TOKEN" "$LINE_CHANNEL_SECRET" > .env
+            "$CHANNEL_ACCESS_TOKEN" "$CHANNEL_SECRET" > .env
       
-          # 準備連線參數
           U=$(printf '%s' "${GCE_USER}" | tr -d '\r\n' | xargs)
           H=$(printf '%s' "${GCE_HOST}" | tr -d '\r\n' | xargs)
       
-          # 確保遠端 $HOME/env 存在且權限正確
           ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
-            -l "$U" -- "$H" 'mkdir -p "$HOME/env" && chmod 700 "$HOME/env"'
+            -l "$U" -- "$H" '
+              set -euo pipefail
+              install -d -m 700 "$HOME/env"
+              install -m 600 /dev/stdin "$HOME/env/.env"
+            ' < .env
       
-          # 上傳 .env 到遠端（注意用 \$HOME 讓遠端展開）
-          scp -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
-            .env "${U}@${H}:\$HOME/env/.env"
-      
-          # 設定遠端檔案權限為 600
-          ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
-            -l "$U" -- "$H" 'chmod 600 "$HOME/env/.env"'
-      
-          # 清掉 runner 上的暫存 .env
           rm -f .env
+
 
       - name: Prepare remote deploy path (mkdir/chown/chmod)
         shell: bash
