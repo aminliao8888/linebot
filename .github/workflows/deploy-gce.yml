@@ -156,22 +156,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          U="$GCE_USER"
-          H="$GCE_HOST"
-          SVC="$SERVICE_NAME"
-
-          ssh -o IdentitiesOnly=yes \
-              -o PreferredAuthentications=publickey \
-              -o GSSAPIAuthentication=no \
-              -i ~/.ssh/id_ed25519 \
-              -o StrictHostKeyChecking=yes \
-              -l "$U" -- "$H" "bash -s -- $(printf %q "$SVC")" <<'REMOTE'
+          U=$(printf '%s' "${GCE_USER}" | tr -d '\r\n' | xargs)
+          H=$(printf '%s' "${GCE_HOST}" | tr -d '\r\n' | xargs)
+          SVC=$(printf '%s' "${SERVICE_NAME}" | tr -d '\r\n' | xargs)
+      
+          # 將遠端腳本用 Heredoc 傳給 bash -s --，SERVICE_NAME 當 $1 傳入
+          ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
+            -l "$U" -- "$H" "bash -s -- $(printf %q "$SVC")" <<'REMOTE'
           set -euo pipefail
           SERVICE_NAME="$1"
-
+      
+          # 無互動 sudo（避免需要 TTY 輸入密碼）
           sudo -n systemctl daemon-reload || true
           sudo -n systemctl restart "$SERVICE_NAME"
-
+      
           # 等待 active / failed，最長 300 秒
           for i in {1..300}; do
             state=$(sudo -n systemctl is-active "$SERVICE_NAME" || true)
@@ -187,9 +185,9 @@ jobs:
             fi
             sleep 1
           done
-
+      
           echo 'Timed out waiting for service to become active'
           sudo -n systemctl --no-pager -l status "$SERVICE_NAME" || true
           sudo -n journalctl -u "$SERVICE_NAME" -n 200 --no-pager || true
           exit 1
-REMOTE
+          REMOTE
