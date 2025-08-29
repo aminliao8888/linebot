@@ -7,7 +7,6 @@ on:
       - "**/*.py"
       - "requirements.txt"
       - "uwsgi.ini"
-      - "wsgi.py"
       - ".github/workflows/deploy-gce.yml"
   workflow_dispatch:
     inputs:
@@ -29,9 +28,9 @@ jobs:
       GCE_HOST: ${{ secrets.GCE_HOST }}                        # 例：35.xx.xx.xx
       GCE_USER: ${{ secrets.GCE_USER }}                        # 例：Amin（大小寫要一致）
       DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}                  # 例：/home/Amin  （建議 secrets 不帶尾斜線）
-      LINE_BOT_AP_DIR: ${{ secrets.DEPLOY_PATH }}/linebot
-      SERVICE_NAME: ${{ secrets.SERVICE_NAME }}                # 例：linebot
-      ENV_DIR: ${{ secrets.DEPLOY_PATH }}/linebot/env
+      LINE_BOT_AP_DIR: ${{ secrets.DEPLOY_PATH }}/linebot      # 例：/home/Amin/linebot
+      SERVICE_NAME: ${{ secrets.SERVICE_NAME }}                # 例：modelserver
+      ENV_DIR: ${{ secrets.DEPLOY_PATH }}/linebot/env          # 例：/home/Amin/linebot/env
       CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
       CHANNEL_SECRET: ${{ secrets.LINE_CHANNEL_SECRET }}
 
@@ -102,12 +101,12 @@ jobs:
           set -euo pipefail
           umask 077
 
-          # 1) 產生本機 .env（LF 換行、600 權限）
+          # 1. 產生本機 .env（LF 換行、600 權限）
           printf 'CHANNEL_ACCESS_TOKEN=%s\nCHANNEL_SECRET=%s\n' \
             "$CHANNEL_ACCESS_TOKEN" "$CHANNEL_SECRET" > .env
           chmod 600 .env
 
-          # 2) 在遠端建立目錄 + 透過 stdin 寫入 .env（安權 600）
+          # 2. 在遠端建立目錄 + 透過 stdin 寫入 .env（安權 600）
           #    注意：單引號只存在於遠端指令裡，用來避免字元展開；實際的路徑展開在遠端進行
           ssh -o IdentitiesOnly=yes \
               -o PreferredAuthentications=publickey \
@@ -121,7 +120,7 @@ jobs:
                install -d -m 700 '${ENV_DIR}'; \
                install -m 600 /dev/stdin '${ENV_DIR}/.env'" < .env
 
-          # 3) 驗證（不印內容，僅列檔案資訊與雜湊）
+          # 3. 驗證（不印內容，僅列檔案資訊與雜湊）
           ssh -o IdentitiesOnly=yes \
               -o PreferredAuthentications=publickey \
               -o StrictHostKeyChecking=yes \
@@ -133,9 +132,8 @@ jobs:
                command -v sha256sum >/dev/null 2>&1 && sha256sum '${ENV_DIR}/.env' || (echo 'sha256sum not found; skip hash' >&2); \
                echo 'REMOTE HOME='\"\$HOME\""
 
-          # 4) 清理本機檔
+          # 4. 清理本機檔
           rm -f .env
-
 
       - name: Install dependencies on VM (venv, optional)
         if: ${{ fromJSON(inputs.do_pip_install || 'false') }}
