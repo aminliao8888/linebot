@@ -29,9 +29,10 @@ jobs:
       GCE_HOST: ${{ secrets.GCE_HOST }}                        # 例：35.xx.xx.xx
       GCE_USER: ${{ secrets.GCE_USER }}                        # 例：Amin（大小寫要一致）
       DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}                  # 例：/home/Amin  （建議 secrets 不帶尾斜線）
-      LINE_BOT_AP_DIR: ${{ secrets.DEPLOY_PATH }}/linebot
+      
       SERVICE_NAME: ${{ secrets.SERVICE_NAME }}                # 例：linebot
-      ENV_DIR: ${{ secrets.DEPLOY_PATH }}/env
+	  LINE_BOT_AP_DIR: ${DEPLOY_PATH}/linebot
+      ENV_DIR: ${LINE_BOT_AP_DIR}/env
       CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
       CHANNEL_SECRET: ${{ secrets.LINE_CHANNEL_SECRET }}
 
@@ -84,7 +85,19 @@ jobs:
                install -d -m 755 '${LINE_BOT_AP_DIR}'; \
                sudo chown -R \$USER:\$USER '${LINE_BOT_AP_DIR}' || true"
 
-      - name: Push LINE .env to /home/Amin/env on GCE (no scp, with path expansion)
+      - name: Rsync code to GCE (repo root → LINE_BOT_AP_DIR)
+        shell: bash
+        run: |
+          set -euo pipefail
+          rsync -vrtz --delete \
+            --exclude '.git/' \
+            --exclude '.github/' \
+            --exclude '.gitignore' \
+            --no-owner --no-group --omit-dir-times --no-perms \
+            -e "ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes -o PreferredAuthentications=publickey -o GSSAPIAuthentication=no" \
+            ./ "${GCE_USER}@${GCE_HOST}:${LINE_BOT_AP_DIR}"
+			
+      - name: Push LINE .env to /home/Amin/linebot/env on GCE (no scp, with path expansion)
         shell: bash
         run: |
           set -euo pipefail
@@ -123,19 +136,7 @@ jobs:
       
           # 4) 清理本機檔
           rm -f .env
-
-
-      - name: Rsync code to GCE (repo root → LINE_BOT_AP_DIR)
-        shell: bash
-        run: |
-          set -euo pipefail
-          rsync -vrtz --delete \
-            --exclude '.git/' \
-            --exclude '.github/' \
-            --exclude '.gitignore' \
-            --no-owner --no-group --omit-dir-times --no-perms \
-            -e "ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes -o PreferredAuthentications=publickey -o GSSAPIAuthentication=no" \
-            ./ "${GCE_USER}@${GCE_HOST}:${LINE_BOT_AP_DIR}"
+			
 
       - name: Install dependencies on VM (venv, optional)
         if: ${{ fromJSON(inputs.do_pip_install || 'false') }}
