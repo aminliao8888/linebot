@@ -59,25 +59,7 @@ jobs:
           ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
             "${GCE_USER}@${GCE_HOST}" "mkdir -p '${DEPLOY_PATH}linebot'"
 
-      - name: Push LINE .env to VM via stdin
-        shell: bash
-        run: |
-          set -euo pipefail
-          umask 077
-          printf 'CHANNEL_ACCESS_TOKEN=%s\nCHANNEL_SECRET=%s\n' \
-            "$CHANNEL_ACCESS_TOKEN" "$CHANNEL_SECRET" > .env
-      
-          U=$(printf '%s' "${GCE_USER}" | tr -d '\r\n' | xargs)
-          H=$(printf '%s' "${GCE_HOST}" | tr -d '\r\n' | xargs)
-      
-          ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
-            -l "$U" -- "$H" '
-              set -euo pipefail
-              install -d -m 700 "${DEPLOY_PATH}/env"
-              install -m 600 /dev/stdin "${DEPLOY_PATH}/env/.env"
-            ' < .env
-      
-          rm -f .env
+
     
       - name: Prepare remote deploy path (mkdir/chown/chmod)
         shell: bash
