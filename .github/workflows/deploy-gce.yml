@@ -84,17 +84,19 @@ jobs:
                install -d -m 755 '${LINE_BOT_AP_DIR}'; \
                sudo chown -R \$USER:\$USER '${LINE_BOT_AP_DIR}' || true"
 
-      - name: Push LINE .env to /home/Amin/env on GCE
+      - name: Push LINE .env to /home/Amin/env on GCE (no scp, with path expansion)
         shell: bash
         run: |
           set -euo pipefail
           umask 077
+      
           # 1) 產生本機 .env（LF 換行、600 權限）
           printf 'CHANNEL_ACCESS_TOKEN=%s\nCHANNEL_SECRET=%s\n' \
             "$CHANNEL_ACCESS_TOKEN" "$CHANNEL_SECRET" > .env
           chmod 600 .env
-
-          # 2) 遠端建立目錄（700 權限）
+      
+          # 2) 在遠端建立目錄 + 透過 stdin 寫入 .env（安權 600）
+          #    注意：單引號只存在於遠端指令裡，用來避免字元展開；實際的路徑展開在遠端進行
           ssh -o IdentitiesOnly=yes \
               -o PreferredAuthentications=publickey \
               -o PasswordAuthentication=no \
@@ -103,24 +105,25 @@ jobs:
               -i ~/.ssh/id_ed25519 \
               -o StrictHostKeyChecking=yes \
               "${GCE_USER}@${GCE_HOST}" \
-              "install -d -m 700 '${ENV_DIR}'"
-
-          # 3) 上傳 .env 並設定 600 權限
-          scp -o IdentitiesOnly=yes \
-              -o PreferredAuthentications=publickey \
-              -o StrictHostKeyChecking=yes \
-              -i ~/.ssh/id_ed25519 \
-              .env "${GCE_USER}@${GCE_HOST}:'${ENV_DIR}/.env'"
-
+              "set -euo pipefail; \
+               install -d -m 700 '${ENV_DIR}'; \
+               install -m 600 /dev/stdin '${ENV_DIR}/.env'" < .env
+      
+          # 3) 驗證（不印內容，僅列檔案資訊與雜湊）
           ssh -o IdentitiesOnly=yes \
               -o PreferredAuthentications=publickey \
               -o StrictHostKeyChecking=yes \
               -i ~/.ssh/id_ed25519 \
               "${GCE_USER}@${GCE_HOST}" \
-              "chmod 600 '${ENV_DIR}/.env' && ls -l '${ENV_DIR}/.env' && echo 'REMOTE HOME='\"\$HOME\""
-
+              "set -euo pipefail; \
+               test -s '${ENV_DIR}/.env'; \
+               ls -l '${ENV_DIR}/.env'; \
+               command -v sha256sum >/dev/null 2>&1 && sha256sum '${ENV_DIR}/.env' || (echo 'sha256sum not found; skip hash' >&2); \
+               echo 'REMOTE HOME='\"\$HOME\""
+      
           # 4) 清理本機檔
           rm -f .env
+
 
       - name: Rsync code to GCE (repo root → LINE_BOT_AP_DIR)
         shell: bash
