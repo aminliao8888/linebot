@@ -143,19 +143,15 @@ jobs:
               -o GSSAPIAuthentication=no \
               -i ~/.ssh/id_ed25519 \
               -o StrictHostKeyChecking=yes \
-              "${GCE_USER}@${GCE_HOST}" <<'REMOTE'
-          set -euo pipefail
-          cd "${LINE_BOT_AP_DIR}"
-          if [ ! -d venv ]; then
-            python3 -m venv venv
-          fi
-          . venv/bin/activate
-          pip install --upgrade pip wheel
-          if [ -f requirements.txt ]; then
-            pip install -r requirements.txt
-          fi
-REMOTE
-
+              "${GCE_USER}@${GCE_HOST}" "
+                set -e
+                cd '${LINE_BOT_AP_DIR}'
+                [ -d venv ] || python3 -m venv venv
+                . venv/bin/activate
+                pip install --upgrade pip wheel
+                [ -f requirements.txt ] && pip install -r requirements.txt || true
+              "
+              
       - name: Restart service on VM (wait until active + logs if fail)
         shell: bash
         run: |
