@@ -26,11 +26,12 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      GCE_HOST: ${{ secrets.GCE_HOST }}         # 例：35.xx.xx.xx
-      GCE_USER: ${{ secrets.GCE_USER }}         # 例：Amin（大小寫要一致）
-      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}               # 例：/home/Amin/linebot/
-      SERVICE_NAME: ${{ secrets.SERVICE_NAME }} # 例：linebot
-      DEPLOY_ENV_PATH: ${{ secrets.DEPLOY_PATH }}
+      GCE_HOST: ${{ secrets.GCE_HOST }}         						# 例：35.xx.xx.xx
+      GCE_USER: ${{ secrets.GCE_USER }}         						# 例：Amin（大小寫要一致）
+	  DEPLOY_PATH:${{ secrets.DEPLOY_PATH }}   							# 例：/home/Amin/
+      LINE_BOT_AP_DIR:${{ secrets.DEPLOY_PATH }}linebot					# 例：/home/Amin/linebot	  
+      SERVICE_NAME: ${{ secrets.SERVICE_NAME }} 						# 例：linebot
+	  ENV_DIR:${{ secrets.DEPLOY_PATH }}env								# 例：/home/Amin/env
       CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
       CHANNEL_SECRET: ${{ secrets.LINE_CHANNEL_SECRET }}
       
@@ -57,9 +58,7 @@ jobs:
       - name: Ensure remote deploy path exists
         run: |
           ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
-            "${GCE_USER}@${GCE_HOST}" "mkdir -p '${DEPLOY_PATH}linebot'"
-
-
+            "${GCE_USER}@${GCE_HOST}" "mkdir -p '${LINE_BOT_AP_DIR}'"
     
       - name: Prepare remote deploy path (mkdir/chown/chmod)
         shell: bash
@@ -78,11 +77,53 @@ jobs:
           ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
             -l "$GCE_USER_CLEAN" -- "$GCE_HOST_CLEAN" \
             "set -euo pipefail; \
-             sudo mkdir -p '${DEPLOY_PATH}linebot' && \
-             sudo chown -R \$USER:\$USER '${DEPLOY_PATH}linebot' && \
-             sudo chmod -R u+rwX '${DEPLOY_PATH}linebot'"
+             sudo mkdir -p '${LINE_BOT_AP_DIR}' && \
+             sudo chown -R \$USER:\$USER '${LINE_BOT_AP_DIR}' && \
+             sudo chmod -R u+rwX '${LINE_BOT_AP_DIR}'"
+		
+      - name: Push LINE .env to /home/Amin/env on GCE
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+      
+          # 產生本機 .env（LF 換行、600 權限）
+          printf 'CHANNEL_ACCESS_TOKEN=%s\nCHANNEL_SECRET=%s\n' \
+            "$LINE_CHANNEL_ACCESS_TOKEN" "$LINE_CHANNEL_SECRET" > .env
+          chmod 600 .env
+      
+          # 遠端建立目錄（700 權限）
+          ssh -o IdentitiesOnly=yes \
+              -o PreferredAuthentications=publickey \
+              -o PasswordAuthentication=no \
+              -o KbdInteractiveAuthentication=no \
+              -o GSSAPIAuthentication=no \
+              -o StrictHostKeyChecking=yes \
+              -i ~/.ssh/id_ed25519 \
+              "${GCE_USER}@${GCE_HOST}" \
+              "install -d -m 700 '${ENV_DIR}'"
+      
+          # 上傳 .env 並設定 600 權限
+          scp -o IdentitiesOnly=yes \
+              -o PreferredAuthentications=publickey \
+              -o StrictHostKeyChecking=yes \
+              -i ~/.ssh/id_ed25519 \
+              .env "${GCE_USER}@${GCE_HOST}:'${ENV_DIR}/.env'"
+      
+          ssh -o IdentitiesOnly=yes \
+              -o PreferredAuthentications=publickey \
+              -o StrictHostKeyChecking=yes \
+              -i ~/.ssh/id_ed25519 \
+              "${GCE_USER}@${GCE_HOST}" \
+              "chmod 600 '${ENV_DIR}/.env' && ls -l '${ENV_DIR}/.env' && echo 'REMOTE HOME='\"\$HOME\""
+      
+          # 清理本機檔
+          rm -f .env
 
-      - name: Rsync code to GCE (repo root → DEPLOY_PATH)
+
+
+
+      - name: Rsync code to GCE (repo root → LINE_BOT_AP_DIR)
         shell: bash
         run: |
           set -euo pipefail
@@ -93,14 +134,14 @@ jobs:
             --exclude '.git/' --exclude '.github/' --exclude '.gitignore' \
             --no-owner --no-group --omit-dir-times --no-perms \
             -e "ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes" \
-            ./ "${GCE_USER_CLEAN}@${GCE_HOST_CLEAN}:${DEPLOY_PATH}/linebot/"
+            ./ "${GCE_USER_CLEAN}@${GCE_HOST_CLEAN}:${LINE_BOT_AP_DIR}"
 
       - name: Install dependencies on VM (venv, optional)
         if: ${{ inputs.do_pip_install }}
         run: |
           ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes "${GCE_USER}@${GCE_HOST}" << EOF
           set -e
-          cd "${DEPLOY_PATH}linebot"
+          cd "${LINE_BOT_AP_DIR}"
           if [ ! -d venv ]; then
             python3 -m venv venv
           fi
