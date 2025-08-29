@@ -26,12 +26,12 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      GCE_HOST: ${{ secrets.GCE_HOST }}         						# 例：35.xx.xx.xx
-      GCE_USER: ${{ secrets.GCE_USER }}         						# 例：Amin（大小寫要一致）
-	  DEPLOY_PATH:${{ secrets.DEPLOY_PATH }}   							# 例：/home/Amin/
-      LINE_BOT_AP_DIR:${{ secrets.DEPLOY_PATH }}linebot					# 例：/home/Amin/linebot	  
-      SERVICE_NAME: ${{ secrets.SERVICE_NAME }} 						# 例：linebot
-	  ENV_DIR:${{ secrets.DEPLOY_PATH }}env								# 例：/home/Amin/env
+      GCE_HOST: ${{ secrets.GCE_HOST }}                  # 例：35.xx.xx.xx
+      GCE_USER: ${{ secrets.GCE_USER }}                  # 例：Amin（大小寫要一致）
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}            # 例：/home/Amin  (建議 secrets 不帶尾斜線)
+      LINE_BOT_AP_DIR: ${{ secrets.DEPLOY_PATH }}/linebot
+      SERVICE_NAME: ${{ secrets.SERVICE_NAME }}          # 例：linebot
+      ENV_DIR: ${{ secrets.DEPLOY_PATH }}/env
       CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
       CHANNEL_SECRET: ${{ secrets.LINE_CHANNEL_SECRET }}
       
